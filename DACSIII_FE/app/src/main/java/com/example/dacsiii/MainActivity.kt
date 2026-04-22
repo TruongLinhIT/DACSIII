@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
             DACSIIITheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Greeting(
-                        name = "Linh123",
+                        name = "Lalo 123",
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
