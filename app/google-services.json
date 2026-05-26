@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "108658403925",
+    "project_id": "dacsiii-86b02",
+    "storage_bucket": "dacsiii-86b02.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:108658403925:android:5262042aaeabe4dc87c2dc",
+        "android_client_info": {
+          "package_name": "com.example.dacsiii_v2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCaJwNutpacGfRKGP6gIf8aZ7vswJpjMHY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
