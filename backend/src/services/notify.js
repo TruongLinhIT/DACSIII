@@ -1,5 +1,5 @@
 const db = require("../db/knex");
-const { emitToDriver } = require("../socket");
+const { sendToTokens, isFirebaseReady } = require("./firebase");
 
 async function persistNotifications(users, payload) {
   if (!Array.isArray(users) || users.length === 0) {
@@ -27,26 +27,51 @@ async function persistNotifications(users, payload) {
 
 async function sendNotificationToUsers(users, payload) {
   let stored = 0;
+  let sent = 0;
+
   try {
     stored = await persistNotifications(users, payload);
 
-    // Phát tín hiệu Realtime qua Socket.io vì không dùng Firebase
-    if (stored > 0) {
-      users.forEach((user) => {
-        if (user.user_id) {
-          emitToDriver(user.user_id, "new_db_notification", {
-            title: payload.title,
-            body: payload.body,
-            data: payload.data
-          });
+    if (isFirebaseReady()) {
+      const tokens = [];
+      const userIdsToFetch = [];
+
+      for (const user of users) {
+        if (user.fcm_token) {
+          tokens.push(user.fcm_token);
+        } else if (user.user_id) {
+          userIdsToFetch.push(user.user_id);
         }
-      });
+      }
+
+      if (userIdsToFetch.length > 0) {
+        const dbUsers = await db("users")
+          .select("user_id", "fcm_token")
+          .whereIn("user_id", userIdsToFetch);
+        for (const u of dbUsers) {
+          if (u.fcm_token) {
+            tokens.push(u.fcm_token);
+          }
+        }
+      }
+
+      const uniqueTokens = [...new Set(tokens)];
+      if (uniqueTokens.length > 0) {
+        const response = await sendToTokens(
+          uniqueTokens,
+          { title: payload.title, body: payload.body },
+          payload.data
+        );
+        sent = response.successCount || 0;
+      }
+    } else {
+      console.warn("FCM not ready. Push notification skipped.");
     }
   } catch (error) {
-    console.warn("Notification save failed:", error.message || error);
+    console.warn("Notification sending or saving failed:", error.message || error);
   }
 
-  return { success: stored > 0, stored, sent: 0 };
+  return { success: stored > 0 || sent > 0, stored, sent };
 }
 
 module.exports = { sendNotificationToUsers };

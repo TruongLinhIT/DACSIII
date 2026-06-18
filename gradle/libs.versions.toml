@@ -21,6 +21,7 @@ osmdroid = "6.1.18"
 dataStore = "1.1.1"
 playServicesLocation = "21.3.0"
 socketIoClient = "2.1.0"
+firebaseMessaging = "25.0.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -57,6 +58,7 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging-ktx" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 socket-io-client = { group = "io.socket", name = "socket.io-client", version.ref = "socketIoClient" }
+google-firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging", version.ref = "firebaseMessaging" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

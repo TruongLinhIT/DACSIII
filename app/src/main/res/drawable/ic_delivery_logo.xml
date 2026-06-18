@@ -1,0 +1,90 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+
+    <!-- Nền tròn navy/indigo đậm -->
+    <path
+        android:fillColor="#1A1A3E"
+        android:pathData="M100,100m-100,0a100,100 0 1,0 200,0a100,100 0 1,0 -200,0" />
+
+    <!-- Thân xe tải chính (màu cam đỏ) -->
+    <path
+        android:fillColor="#E8431A"
+        android:pathData="M38,85 L38,125 L148,125 L148,90 L120,90 L110,72 L60,72 L60,85 Z" />
+
+    <!-- Cabin xe tải -->
+    <path
+        android:fillColor="#D03A14"
+        android:pathData="M110,72 L120,90 L148,90 L148,85 L135,72 Z" />
+
+    <!-- Kính chắn gió -->
+    <path
+        android:fillColor="#FFD4A0"
+        android:pathData="M114,76 L122,88 L142,88 L142,84 L132,76 Z" />
+
+    <!-- Cửa xe / Cửa sổ thân -->
+    <path
+        android:fillColor="#C03010"
+        android:pathData="M65,76 L65,88 L105,88 L105,76 Z" />
+
+    <!-- Thanh trang trí trên cửa -->
+    <path
+        android:fillColor="#FF6B35"
+        android:pathData="M65,76 L65,80 L105,80 L105,76 Z" />
+
+    <!-- Bánh xe trước -->
+    <path
+        android:fillColor="#1A1A3E"
+        android:pathData="M130,125m-14,0a14,14 0 1,0 28,0a14,14 0 1,0 -28,0" />
+    <path
+        android:fillColor="#555577"
+        android:pathData="M130,125m-10,0a10,10 0 1,0 20,0a10,10 0 1,0 -20,0" />
+    <path
+        android:fillColor="#1A1A3E"
+        android:pathData="M130,125m-4,0a4,4 0 1,0 8,0a4,4 0 1,0 -8,0" />
+
+    <!-- Bánh xe sau -->
+    <path
+        android:fillColor="#1A1A3E"
+        android:pathData="M70,125m-14,0a14,14 0 1,0 28,0a14,14 0 1,0 -28,0" />
+    <path
+        android:fillColor="#555577"
+        android:pathData="M70,125m-10,0a10,10 0 1,0 20,0a10,10 0 1,0 -20,0" />
+    <path
+        android:fillColor="#1A1A3E"
+        android:pathData="M70,125m-4,0a4,4 0 1,0 8,0a4,4 0 1,0 -8,0" />
+
+    <!-- Đèn phía trước -->
+    <path
+        android:fillColor="#FFD060"
+        android:pathData="M146,92 L155,96 L155,105 L146,108 Z" />
+
+    <!-- Điểm trắng ở thân (đèn / chi tiết) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M80,98m-5,0a5,5 0 1,0 10,0a5,5 0 1,0 -10,0" />
+
+    <!-- Đường tốc độ - dài -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.85"
+        android:pathData="M22,95 L48,95 L48,99 L22,99 Z"
+        android:strokeWidth="0" />
+
+    <!-- Đường tốc độ - vừa -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.65"
+        android:pathData="M28,106 L50,106 L50,110 L28,110 Z"
+        android:strokeWidth="0" />
+
+    <!-- Đường tốc độ - ngắn -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.45"
+        android:pathData="M34,117 L52,117 L52,121 L34,121 Z"
+        android:strokeWidth="0" />
+
+</vector>

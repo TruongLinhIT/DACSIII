@@ -86,6 +86,7 @@ dependencies {
 
     // DataStore
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.google.firebase.messaging)
 
     // Testing
     testImplementation(libs.junit)

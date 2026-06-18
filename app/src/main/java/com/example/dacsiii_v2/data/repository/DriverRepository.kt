@@ -25,7 +25,11 @@ class DriverRepository(private val apiService: ApiService) {
         apiService.getDriverWallet("Bearer $token")
     }.mapErrorMessage()
 
-    suspend fun getAvailableOrders(token: String, lat: Double, lng: Double) = runCatching {
+    suspend fun getAvailableOrders(token: String) = runCatching {
+        apiService.getDriverAvailableOrders("Bearer $token")
+    }.mapErrorMessage()
+
+    suspend fun getAvailableOrdersByLocation(token: String, lat: Double, lng: Double) = runCatching {
         apiService.getAvailableOrdersByLocation("Bearer $token", lat, lng)
     }.mapErrorMessage()
 
@@ -61,7 +65,7 @@ class DriverRepository(private val apiService: ApiService) {
         apiService.getDriverEarnings("Bearer $token", range, date)
     }.mapErrorMessage()
 
-    suspend fun updateLocation(token: String, lat: Double, lng: Double, isOnline: Int? = 1) = runCatching {
+    suspend fun updateLocation(token: String, lat: Double?, lng: Double?, isOnline: Int? = 1) = runCatching {
         apiService.updateDriverLocation(
             "Bearer $token",
             DriverLocationRequest(current_lat = lat, current_lng = lng, is_online = isOnline)

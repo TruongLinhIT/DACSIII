@@ -1,6 +1,6 @@
-const db = require("../db/knex");
+const db = require("../db/knex");// Query builder Knex.js để giao tiếp với Database SQL
 const crypto = require("crypto");
-const { createOtp, hashOtp, isOtpExpired } = require("../utils/otp");
+const { createOtp, hashOtp, isOtpExpired } = require("../utils/otp");// Các hàm tiện ích xử lý OTP
 const { sendEmailOtp } = require("../services/email");
 const { signJwt } = require("../utils/jwt");
 
@@ -40,6 +40,10 @@ async function login(req, res, next) {
     const hashedInput = hashPassword(password);
     if (hashedInput !== user.password) {
       return res.status(401).json({ success: false, message: "Email hoặc mật khẩu không chính xác." });
+    }
+
+    if (user.is_locked) {
+      return res.status(403).json({ success: false, message: "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên." });
     }
 
     const token = signJwt({
@@ -201,6 +205,11 @@ async function verifyOtp(req, res, next) {
       return res.status(400).json({ success: false, message: "Mã OTP không chính xác." });
     }
 
+    // Kiểm tra tài khoản bị khóa
+    if (user.is_locked) {
+      return res.status(403).json({ success: false, message: "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên." });
+    }
+
     // Xác thực thành công: Xóa mã OTP
     await db("users")
       .where({ user_id: user.user_id })
@@ -247,6 +256,11 @@ async function firebaseLogin(req, res, next) {
       }
 
       const user = await db("users").where({ email }).orderBy('user_id', 'desc').first();
+
+      if (user.is_locked) {
+        return res.status(403).json({ success: false, message: "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên." });
+      }
+
       const token = signJwt({ user_id: user.user_id, email: user.email, role: user.role });
       res.json({ success: true, token, user });
     } catch (error) {

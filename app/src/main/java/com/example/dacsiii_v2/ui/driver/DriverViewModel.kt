@@ -1,5 +1,6 @@
 package com.example.dacsiii_v2.ui.driver
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -16,13 +17,15 @@ import com.example.dacsiii_v2.data.repository.DriverRepository
 import com.example.dacsiii_v2.data.repository.OrderRepository
 import com.example.dacsiii_v2.data.repository.UserRepository
 import com.example.dacsiii_v2.data.model.ProfileUpdateRequest
-import com.example.dacsiii_v2.data.model.NotificationItem
+import com.example.dacsiii_v2.service.NotificationHelper
+import com.example.dacsiii_v2.service.LocationService
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.gson.Gson
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -39,6 +42,7 @@ class DriverViewModel : ViewModel() {
     private val orderRepository = OrderRepository(RetrofitClient.api)
     private val userRepository = UserRepository(RetrofitClient.api)
 
+    private var appContext: Context? = null
     private val _uiState = MutableStateFlow(DriverUiState())
     val uiState: StateFlow<DriverUiState> = _uiState.asStateFlow()
 
@@ -59,6 +63,9 @@ class DriverViewModel : ViewModel() {
                     if (socket?.connected() == true) {
                         emitDriverOnline(profile.user_id, _uiState.value.currentLat, _uiState.value.currentLng)
                         emitDriverPresence(profile.user_id, profileLat = _uiState.value.currentLat, profileLng = _uiState.value.currentLng)
+                    }
+                    appContext?.let { context ->
+                        LocationService.start(context, profile.user_id)
                     }
                     _uiState.value.copy(isLoading = false, profile = profile)
                 },
@@ -104,18 +111,19 @@ class DriverViewModel : ViewModel() {
             if (showLoading) {
                 _uiState.value = _uiState.value.copy(isLoading = true)
             }
-            // Gọi API với lat/lng nullable (Backend đã được sửa để handle null)
-            val result = if (lat != null && lng != null) {
-                driverRepository.getAvailableOrders(token, lat, lng)
+            val result = if (isValidLatitude(lat) && isValidLongitude(lng)) {
+                driverRepository.getAvailableOrdersByLocation(token, lat!!, lng!!)
             } else {
-                // Nếu chưa có tọa độ, gọi route mặc định không cần lat/lng
-                // Lưu ý: Repository cần hỗ trợ hoặc dùng route chung
-                driverRepository.getAvailableOrders(token, 0.0, 0.0) // fallback hoặc sửa Repository
+                driverRepository.getAvailableOrders(token)
             }
-            
+
             _uiState.value = result.fold(
                 onSuccess = { response ->
-                    _uiState.value.copy(isLoading = false, availableOrders = response.orders)
+                    val sortedOrders = response.orders.sortedWith(
+                        compareBy<DriverOrderSummary> { it.distance_from_driver == null }
+                            .thenBy { it.distance_from_driver ?: Double.MAX_VALUE }
+                    )
+                    _uiState.value.copy(isLoading = false, availableOrders = sortedOrders)
                 },
                 onFailure = { error ->
                     _uiState.value.copy(isLoading = false, message = error.message)
@@ -127,7 +135,6 @@ class DriverViewModel : ViewModel() {
     fun refreshAvailableOrders(token: String, showLoading: Boolean = false) {
         val lat = _uiState.value.currentLat
         val lng = _uiState.value.currentLng
-        // Sửa: Không return sớm nếu null, cứ fetch để hiện đơn (dù không có khoảng cách)
         fetchAvailableOrders(token, lat, lng, showLoading)
     }
 
@@ -288,7 +295,7 @@ class DriverViewModel : ViewModel() {
         }
     }
 
-    fun updateLocation(token: String, lat: Double, lng: Double, isOnline: Int = 1) {
+    fun updateLocation(token: String, lat: Double?, lng: Double?, isOnline: Int = 1) {
         viewModelScope.launch {
             val result = driverRepository.updateLocation(token, lat, lng, isOnline)
             if (result.isFailure) {
@@ -336,11 +343,14 @@ class DriverViewModel : ViewModel() {
         if (!realtimeStarted.compareAndSet(false, true)) {
             return
         }
+        appContext = context.applicationContext
         if (_uiState.value.profile == null) {
             fetchProfile(token)
+        } else {
+            LocationService.start(appContext!!, _uiState.value.profile!!.user_id)
         }
         startLocationTracking(context, token)
-        connectSocket(token)
+        connectSocket()
     }
 
     fun stopRealtimeOrders() {
@@ -349,51 +359,75 @@ class DriverViewModel : ViewModel() {
         }
         locationCallback = null
         locationClient = null
+        appContext?.let { LocationService.stop(it) }
         socket?.disconnect()
         socket = null
         realtimeStarted.set(false)
     }
 
+    @SuppressLint("MissingPermission")
     private fun startLocationTracking(context: Context, token: String) {
         if (locationClient != null) {
             return
         }
 
         locationClient = LocationServices.getFusedLocationProviderClient(context)
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
-            .setMinUpdateIntervalMillis(3000)
-            .setMinUpdateDistanceMeters(30f)
-            .build()
-
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                val location = result.lastLocation ?: return
-                val lat = location.latitude
-                val lng = location.longitude
-                
-                val isFirstLocation = _uiState.value.currentLat == null
-                
-                _uiState.value = _uiState.value.copy(currentLat = lat, currentLng = lng)
-                emitDriverOnline(_uiState.value.profile?.user_id, lat, lng)
-                emitDriverPresence(_uiState.value.profile?.user_id, lat, lng)
-                updateLocation(token, lat, lng, isOnline = 1)
-
-                val now = System.currentTimeMillis()
-                if (isFirstLocation || (now - lastFetchTimeMs >= 15000)) {
-                    lastFetchTimeMs = now
-                    fetchAvailableOrders(token, lat, lng, showLoading = false)
-                }
-            }
-        }
 
         try {
+            locationClient?.lastLocation?.addOnSuccessListener { location ->
+                if (location != null) {
+                    applyLocationUpdate(token, location.latitude, location.longitude, forceFetch = true)
+                }
+            }
+
+            val tokenSource = CancellationTokenSource()
+            locationClient?.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, tokenSource.token)
+                ?.addOnSuccessListener { location ->
+                    if (location != null) {
+                        applyLocationUpdate(token, location.latitude, location.longitude, forceFetch = true)
+                    }
+                }
+
+            val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10_000)
+                .setMinUpdateIntervalMillis(10_000)
+                .setMinUpdateDistanceMeters(10f)
+                .build()
+
+            locationCallback = object : LocationCallback() {
+                override fun onLocationResult(result: LocationResult) {
+                    val location = result.lastLocation ?: return
+                    applyLocationUpdate(token, location.latitude, location.longitude, forceFetch = false)
+                }
+            }
+
             locationClient?.requestLocationUpdates(request, locationCallback!!, context.mainLooper)
-        } catch (e: SecurityException) {
+        } catch (_: SecurityException) {
             _uiState.value = _uiState.value.copy(message = "Thiếu quyền truy cập vị trí")
         }
     }
 
-    private fun connectSocket(token: String) {
+    private fun applyLocationUpdate(token: String, lat: Double, lng: Double, forceFetch: Boolean) {
+        if (!isValidLatitude(lat) || !isValidLongitude(lng)) {
+            return
+        }
+
+        val isFirstLocation = _uiState.value.currentLat == null
+        _uiState.value = _uiState.value.copy(currentLat = lat, currentLng = lng)
+        emitDriverOnline(_uiState.value.profile?.user_id, lat, lng)
+        emitDriverPresence(_uiState.value.profile?.user_id, lat, lng)
+
+        if (socket?.connected() != true) {
+            updateLocation(token, lat, lng, isOnline = 1)
+        }
+
+        val now = System.currentTimeMillis()
+        if (forceFetch || isFirstLocation || (now - lastFetchTimeMs >= 15000)) {
+            lastFetchTimeMs = now
+            fetchAvailableOrders(token, lat, lng, showLoading = false)
+        }
+    }
+
+    private fun connectSocket() {
         if (socket != null) {
             return
         }
@@ -405,8 +439,7 @@ class DriverViewModel : ViewModel() {
             }
             
             // Lắng nghe sự kiện thông báo mới từ MySQL (thay cho Firebase)
-            on("new_db_notification") { args ->
-                val payload = args.firstOrNull()?.toString()
+            on("new_db_notification") {
                 _uiState.value = _uiState.value.copy(message = "Bạn có thông báo mới!")
                 // Có thể tự động fetch lại danh sách thông báo ở đây nếu có UI list
             }
@@ -434,6 +467,19 @@ class DriverViewModel : ViewModel() {
                 }
 
                 _uiState.value = _uiState.value.copy(availableOrders = updatedList)
+                val distance = updatedOrder.distance_from_driver
+                if (distance != null && distance <= 3.0) {
+                    _uiState.value = _uiState.value.copy(message = "Co don hang moi gan ban")
+                    appContext?.let { context ->
+                        NotificationHelper.showOrderNotification(
+                            context = context,
+                            title = "Don hang moi",
+                            body = "Don #${updatedOrder.order_id} gan vi tri cua ban",
+                            type = "new_order",
+                            orderId = updatedOrder.order_id.toString()
+                        )
+                    }
+                }
             })
             connect()
         }
@@ -463,17 +509,48 @@ class DriverViewModel : ViewModel() {
         }
 
         socket?.emit(
-            "driver:location",
+            "update_location",
             mapOf(
                 "driver_id" to driverId,
                 "lat" to profileLat,
-                "lng" to profileLng
+                "lng" to profileLng,
+                "is_online" to 1
             )
         )
     }
 
     fun clearMessage() {
         _uiState.value = _uiState.value.copy(message = null)
+    }
+
+    fun setDriverOnlineStatus(context: Context, token: String, isOnline: Int) {
+        val profile = _uiState.value.profile ?: return
+        appContext = context.applicationContext
+        if (socket == null) {
+            connectSocket()
+        }
+        val lat = _uiState.value.currentLat
+        val lng = _uiState.value.currentLng
+
+        if (isOnline == 1) {
+            LocationService.start(appContext!!, profile.user_id)
+            if (isValidLatitude(lat) && isValidLongitude(lng)) {
+                emitDriverOnline(profile.user_id, lat, lng)
+                emitDriverPresence(profile.user_id, lat, lng)
+            }
+        } else {
+            LocationService.stop(appContext!!)
+            socket?.emit(
+                "driver:offline",
+                mapOf("driver_id" to profile.user_id)
+            )
+        }
+
+        _uiState.value = _uiState.value.copy(
+            profile = profile.copy(is_online = isOnline)
+        )
+
+        updateLocation(token, lat, lng, isOnline)
     }
 }
 
@@ -496,5 +573,14 @@ data class DriverUiState(
 
 private data class SocketOrderPayload(
     val order: DriverOrderSummary,
+    @Suppress("PropertyName")
     val distance_from_driver: Double?
 )
+
+private fun isValidLatitude(value: Double?): Boolean {
+    return value != null && value >= -90.0 && value <= 90.0
+}
+
+private fun isValidLongitude(value: Double?): Boolean {
+    return value != null && value >= -180.0 && value <= 180.0
+}

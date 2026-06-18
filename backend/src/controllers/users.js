@@ -4,6 +4,7 @@ const crypto = require("crypto"); // Thêm crypto để băm mật khẩu
 const { uploadRoot } = require("../middleware/upload");
 const { createOtp, hashOtp, isOtpExpired } = require("../utils/otp");
 const { sendEmailOtp } = require("../services/email");
+const { sendNotificationToUsers } = require("../services/notify");
 
 function toPublicUrl(filePath) {
   const relativePath = path.relative(uploadRoot, filePath).split(path.sep).join("/");
@@ -119,6 +120,25 @@ async function uploadIdentity(req, res, next) {
     };
 
     await db("users").where({ user_id: userId }).update(update);
+
+    try {
+      const admins = await db("users")
+        .select("user_id", "fcm_token")
+        .where({ role: "admin" });
+
+      if (admins.length > 0) {
+        await sendNotificationToUsers(admins, {
+          title: "Hồ sơ eKYC mới cần duyệt",
+          body: `Người dùng ID ${userId} đã gửi hồ sơ định danh mới.`,
+          data: {
+            type: "identity_submitted",
+            user_id: String(userId)
+          }
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to notify admins of eKYC submission:", err.message || err);
+    }
 
     return res.json({
       success: true,

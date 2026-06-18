@@ -123,6 +123,7 @@ async function createOrder(req, res, next) {
       distance_km,
       total_price,
       driver_earning,
+      cod_amount,
       status: "pending",
       created_at: new Date().toISOString(),
       customer_name: customer?.full_name ?? null,
@@ -183,7 +184,21 @@ async function listAvailableOrders(req, res, next) {
   try {
     const lat = Number(req.query.lat);
     const lng = Number(req.query.lng);
-    const hasLocation = Number.isFinite(lat) && Number.isFinite(lng);
+    let finalLat = lat;
+    let finalLng = lng;
+    let hasLocation = Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0);
+
+    if (!hasLocation && req.user && req.user.user_id) {
+      const driver = await db("drivers")
+        .select("current_lat", "current_lng")
+        .where({ driver_id: req.user.user_id })
+        .first();
+      if (driver && Number.isFinite(driver.current_lat) && Number.isFinite(driver.current_lng)) {
+        finalLat = driver.current_lat;
+        finalLng = driver.current_lng;
+        hasLocation = true;
+      }
+    }
 
     let query = db("orders")
       .leftJoin("users", "orders.customer_id", "users.user_id")
@@ -200,6 +215,7 @@ async function listAvailableOrders(req, res, next) {
         "orders.distance_km",
         "orders.total_price",
         "orders.driver_earning",
+        "orders.cod_amount",
         "orders.status",
         "orders.created_at",
         "users.full_name as customer_name",
@@ -208,20 +224,34 @@ async function listAvailableOrders(req, res, next) {
 
     if (hasLocation) {
       const distanceSql = db.raw(
-        "(6371 * acos(cos(radians(?)) * cos(radians(orders.pickup_lat)) * cos(radians(orders.pickup_lng) - radians(?)) + sin(radians(?)) * sin(radians(orders.pickup_lat))))",
-        [lat, lng, lat]
+        "ABS(6371 * acos(cos(radians(?)) * cos(radians(orders.pickup_lat)) * cos(radians(orders.pickup_lng) - radians(?)) + sin(radians(?)) * sin(radians(orders.pickup_lat))))",
+        [finalLat, finalLng, finalLat]
       );
+      const distanceQuery = distanceSql.toSQL();
       query = query.select({ distance_from_driver: distanceSql });
+      query = query.orderByRaw(`${distanceQuery.sql} asc`, distanceQuery.bindings);
     } else {
       query = query.select(db.raw("NULL as distance_from_driver"));
+      query = query.orderBy("orders.created_at", "desc");
     }
 
     const orders = await query
       .where({ "orders.status": "pending" })
-      .whereNull("orders.driver_id")
-      .orderBy("orders.created_at", "desc");
+      .whereNull("orders.driver_id");
 
-    res.json({ success: true, orders });
+    const processedOrders = orders.map((order) => {
+      const dist = order.distance_from_driver !== null && order.distance_from_driver !== undefined
+        ? Number(order.distance_from_driver)
+        : null;
+      return {
+        ...order,
+        distance_from_driver: dist,
+        distance_to_pickup_km: dist,
+        is_near_pickup: dist !== null && dist <= 3.0
+      };
+    });
+
+    res.json({ success: true, orders: processedOrders });
   } catch (error) {
     next(error);
   }

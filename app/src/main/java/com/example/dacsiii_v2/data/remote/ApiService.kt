@@ -16,6 +16,8 @@ import com.example.dacsiii_v2.data.model.VerifyOtpRequest
 import com.example.dacsiii_v2.data.model.VerifyOtpResponse
 import com.example.dacsiii_v2.data.model.AllUsersResponse
 import com.example.dacsiii_v2.data.model.VerifyIdentityRequest
+import com.example.dacsiii_v2.data.model.LockUserRequest
+import com.example.dacsiii_v2.data.model.RevokeEkycRequest
 import com.example.dacsiii_v2.data.model.CreateOrderRequest
 import com.example.dacsiii_v2.data.model.OrderResponse
 import com.example.dacsiii_v2.data.model.DriverEarningsResponse
@@ -27,6 +29,10 @@ import com.example.dacsiii_v2.data.model.ChangePasswordRequest
 import com.example.dacsiii_v2.data.model.DeviceTokenRequest
 import com.example.dacsiii_v2.data.model.DriverLocationRequest
 import com.example.dacsiii_v2.data.model.NotificationListResponse
+import com.example.dacsiii_v2.data.model.CommissionSummaryResponse
+import com.example.dacsiii_v2.data.model.ReportRequest
+import com.example.dacsiii_v2.data.model.ReportListResponse
+import com.example.dacsiii_v2.data.model.ReportDetailResponse
 import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -116,6 +122,33 @@ interface ApiService {
         @Path("id") userId: Int,
         @Body request: VerifyIdentityRequest
     ): ApiMessageResponse
+
+    @PUT("admin/users/{id}/lock")
+    suspend fun lockUser(
+        @Header("Authorization") token: String,
+        @Path("id") userId: Int,
+        @Body request: LockUserRequest
+    ): ApiMessageResponse
+
+    @PUT("admin/users/{id}/unlock")
+    suspend fun unlockUser(
+        @Header("Authorization") token: String,
+        @Path("id") userId: Int
+    ): ApiMessageResponse
+
+    @PUT("admin/users/{id}/revoke-ekyc")
+    suspend fun revokeEkyc(
+        @Header("Authorization") token: String,
+        @Path("id") userId: Int,
+        @Body request: RevokeEkycRequest
+    ): ApiMessageResponse
+
+    @GET("admin/commission-summary")
+    suspend fun getCommissionSummary(
+        @Header("Authorization") token: String,
+        @Query("range") range: String,
+        @Query("date") date: String? = null
+    ): CommissionSummaryResponse
 
     // --- Order Endpoints ---
     @POST("orders")
@@ -246,4 +279,30 @@ interface ApiService {
         @Query("lat") lat: Double,
         @Query("lng") lng: Double
     ): DriverOrderListResponse
+
+    // --- Report Endpoints ---
+    @POST("reports")
+    suspend fun submitReport(
+        @Header("Authorization") token: String,
+        @Body request: ReportRequest
+    ): ApiMessageResponse
+
+    @GET("reports")
+    suspend fun getAllReports(
+        @Header("Authorization") token: String,
+        @Query("status") status: String? = null,
+        @Query("search") search: String? = null
+    ): ReportListResponse
+
+    @GET("reports/{id}")
+    suspend fun getReportDetail(
+        @Header("Authorization") token: String,
+        @Path("id") reportId: Int
+    ): ReportDetailResponse
+
+    @PUT("reports/{id}/resolve")
+    suspend fun resolveReport(
+        @Header("Authorization") token: String,
+        @Path("id") reportId: Int
+    ): ApiMessageResponse
 }

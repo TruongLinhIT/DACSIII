@@ -2,10 +2,15 @@ const path = require("path");
 const db = require("../db/knex");
 const { uploadRoot } = require("../middleware/upload");
 const { sendNotificationToUsers } = require("../services/notify");
+const { trackDriverLocation, removeDriverLocation } = require("../socket");
 
 const NEAR_PICKUP_KM = 3;
 
-function isValidCoordinate(value) {
+function isValidLatitude(value) {
+  return Number.isFinite(value) && Math.abs(value) <= 90;
+}
+
+function isValidLongitude(value) {
   return Number.isFinite(value) && Math.abs(value) <= 180;
 }
 
@@ -32,7 +37,7 @@ function normalizeDistanceKm(distanceKm) {
 }
 
 async function notifyNearbyOrders(userId, currentLat, currentLng) {
-  if (!isValidCoordinate(currentLat) || !isValidCoordinate(currentLng)) {
+  if (!isValidLatitude(currentLat) || !isValidLongitude(currentLng)) {
     return;
   }
 
@@ -67,7 +72,7 @@ async function notifyNearbyOrders(userId, currentLat, currentLng) {
   );
 
   for (const order of pendingOrders) {
-    if (!isValidCoordinate(order.pickup_lat) || !isValidCoordinate(order.pickup_lng)) {
+    if (!isValidLatitude(order.pickup_lat) || !isValidLongitude(order.pickup_lng)) {
       continue;
     }
 
@@ -177,13 +182,24 @@ async function updateDriverLocation(req, res, next) {
   try {
     const userId = req.user.user_id;
     const { current_lat, current_lng, is_online } = req.body;
+    const lat = current_lat === null || current_lat === undefined ? null : Number(current_lat);
+    const lng = current_lng === null || current_lng === undefined ? null : Number(current_lng);
+
+    const hasLocation = isValidLatitude(lat) && isValidLongitude(lng);
+    if ((lat !== null || lng !== null) && !hasLocation) {
+      return res.status(400).json({ success: false, message: "Tọa độ không hợp lệ." });
+    }
 
     const existing = await db("drivers").where({ driver_id: userId }).first();
+    const nextOnline = typeof is_online === "number" ? is_online : (existing?.is_online ?? 1);
     const payload = {
-      current_lat,
-      current_lng,
-      is_online: is_online ?? 1
+      is_online: nextOnline
     };
+
+    if (hasLocation) {
+      payload.current_lat = lat;
+      payload.current_lng = lng;
+    }
 
     if (existing) {
       await db("drivers").where({ driver_id: userId }).update(payload);
@@ -198,9 +214,11 @@ async function updateDriverLocation(req, res, next) {
       });
     }
 
-    const isOnline = payload.is_online ?? existing?.is_online ?? 1;
-    if (isOnline !== 0) {
-      await notifyNearbyOrders(userId, current_lat, current_lng);
+    if (nextOnline !== 0 && hasLocation) {
+      trackDriverLocation(userId, lat, lng);
+      await notifyNearbyOrders(userId, lat, lng);
+    } else if (nextOnline === 0) {
+      removeDriverLocation(userId);
     }
 
     return res.json({ success: true, message: "Đã cập nhật vị trí tài xế." });
@@ -244,6 +262,7 @@ async function listAvailableOrders(req, res, next) {
         "orders.distance_km",
         "orders.total_price",
         "orders.driver_earning",
+        "orders.cod_amount",
         "orders.status",
         "orders.created_at",
         "users.full_name as customer_name",
@@ -260,12 +279,17 @@ async function listAvailableOrders(req, res, next) {
 
     const driverLat = driver?.current_lat;
     const driverLng = driver?.current_lng;
-    const shouldComputeDistance = isValidCoordinate(driverLat) && isValidCoordinate(driverLng);
+    const shouldComputeDistance = isValidLatitude(driverLat) && isValidLongitude(driverLng);
 
     const ordersWithDistance = shouldComputeDistance
       ? orders.map((order) => {
-          if (!isValidCoordinate(order.pickup_lat) || !isValidCoordinate(order.pickup_lng)) {
-            return { ...order, distance_to_pickup_km: null, is_near_pickup: false };
+          if (!isValidLatitude(order.pickup_lat) || !isValidLongitude(order.pickup_lng)) {
+            return {
+              ...order,
+              distance_from_driver: null,
+              distance_to_pickup_km: null,
+              is_near_pickup: false
+            };
           }
 
           const distanceToPickup = normalizeDistanceKm(
@@ -273,11 +297,17 @@ async function listAvailableOrders(req, res, next) {
           );
           return {
             ...order,
+            distance_from_driver: distanceToPickup,
             distance_to_pickup_km: distanceToPickup,
             is_near_pickup: distanceToPickup !== null && distanceToPickup <= NEAR_PICKUP_KM
           };
         })
-      : orders;
+      : orders.map((order) => ({
+          ...order,
+          distance_from_driver: null,
+          distance_to_pickup_km: null,
+          is_near_pickup: false
+        }));
 
     return res.json({ success: true, orders: ordersWithDistance });
   } catch (error) {
@@ -299,6 +329,7 @@ async function listActiveOrders(req, res, next) {
         "orders.distance_km",
         "orders.total_price",
         "orders.driver_earning",
+        "orders.cod_amount",
         "orders.status",
         "orders.created_at",
         "orders.accepted_at",
@@ -329,6 +360,7 @@ async function listOrderHistory(req, res, next) {
         "orders.distance_km",
         "orders.total_price",
         "orders.driver_earning",
+        "orders.cod_amount",
         "orders.status",
         "orders.completed_at",
         "users.full_name as customer_name",
@@ -514,6 +546,30 @@ async function completeOrder(req, res, next) {
       ]);
 
       await trx.commit();
+
+      try {
+        const customer = await db("users")
+          .select("fcm_token")
+          .where({ user_id: order.customer_id })
+          .first();
+
+        if (order.customer_id) {
+          await sendNotificationToUsers(
+            [{ user_id: order.customer_id, fcm_token: customer?.fcm_token }],
+            {
+              title: "Đơn hàng đã hoàn thành",
+              body: `Đơn #${id} đã được giao thành công.`,
+              data: {
+                type: "order_completed",
+                order_id: String(id)
+              }
+            }
+          );
+        }
+      } catch (notifyErr) {
+        console.warn("Failed to send customer order completion notification:", notifyErr.message || notifyErr);
+      }
+
       return res.json({ success: true, message: "Order completed", photo_url: photoUrl });
     } catch (error) {
       await trx.rollback();

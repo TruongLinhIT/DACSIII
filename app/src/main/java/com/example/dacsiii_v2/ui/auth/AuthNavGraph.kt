@@ -2,6 +2,7 @@ package com.example.dacsiii_v2.ui.auth
 
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -12,6 +13,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.dacsiii_v2.ui.admin.AdminDashboardScreen
+import com.example.dacsiii_v2.ui.admin.AdminReportsScreen
 import com.example.dacsiii_v2.ui.admin.AdminViewModel
 import com.example.dacsiii_v2.ui.admin.UserDetailScreen
 import com.example.dacsiii_v2.ui.admin.UserManagementScreen
@@ -48,11 +50,15 @@ fun AuthNavGraph(
     val userRepository = remember { UserRepository(RetrofitClient.api) }
 
     LaunchedEffect(userToken) {
+        val sharedPrefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         if (userToken.isNotBlank()) {
+            sharedPrefs.edit().putString("jwt_token", userToken).apply()
             val fcmToken = runCatching { FirebaseMessaging.getInstance().token.await() }.getOrNull()
             if (!fcmToken.isNullOrBlank()) {
                 userRepository.registerDeviceToken(userToken, fcmToken)
             }
+        } else {
+            sharedPrefs.edit().remove("jwt_token").apply()
         }
     }
 
@@ -95,19 +101,35 @@ fun AuthNavGraph(
             )
         }
 
-        // --- Admin Routes ---
         composable("admin_dashboard") {
+            val adminViewModel: AdminViewModel = viewModel()
             AdminDashboardScreen(
+                token = userToken,
+                viewModel = adminViewModel,
                 onNavigateUserManagement = { navController.navigate("admin/users") },
                 onNavigateVerification = { 
                     navController.navigate("admin/users?filter=pending") 
                 },
+                onNavigateLockedUsers = {
+                    navController.navigate("admin/users?filter=locked")
+                },
+                onNavigateNotifications = { navController.navigate("notifications") },
+                onNavigateReports = { navController.navigate("admin/reports") },
                 onLogout = {
                     userToken = ""
                     navController.navigate("login") {
                         popUpTo("admin_dashboard") { inclusive = true }
                     }
                 }
+            )
+        }
+
+        composable("admin/reports") {
+            val adminViewModel: AdminViewModel = viewModel()
+            AdminReportsScreen(
+                token = userToken,
+                viewModel = adminViewModel,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 
@@ -118,9 +140,11 @@ fun AuthNavGraph(
                 defaultValue = null 
             })
         ) { backStackEntry ->
+            val filter = backStackEntry.arguments?.getString("filter")
             val adminViewModel: AdminViewModel = viewModel()
             UserManagementScreen(
                 token = userToken,
+                initialFilter = filter,
                 viewModel = adminViewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateDetail = { userId -> 
@@ -143,9 +167,11 @@ fun AuthNavGraph(
             )
         }
 
-        // --- Customer Routes ---
-        composable("customer_dashboard") {
+        composable("customer_dashboard") { backStackEntry ->
+            val customerViewModel: CustomerViewModel = viewModel(backStackEntry)
             CustomerDashboardScreen(
+                token = userToken,
+                viewModel = customerViewModel,
                 onNavigateProfile = { navController.navigate("customer/profile") },
                 onNavigateHistory = { navController.navigate("customer/orders") },
                 onNavigateOrders = { navController.navigate("customer/orders/create") },

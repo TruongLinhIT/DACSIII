@@ -5,7 +5,6 @@ Node.js + Express backend for OTP login using MySQL (Knex).
 ## Requirements
 - Node.js 18+
 - MySQL/MariaDB
-- Twilio account for real SMS (optional when using Firebase)
 - Firebase service account (for Firebase login)
 
 ## Quick Start

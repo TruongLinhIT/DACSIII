@@ -31,8 +31,8 @@ data class DriverProfileUpdateRequest(
 )
 
 data class DriverLocationRequest(
-    val current_lat: Double,
-    val current_lng: Double,
+    val current_lat: Double?,
+    val current_lng: Double?,
     val is_online: Int? = 1
 )
 
@@ -64,6 +64,7 @@ data class DriverOrderSummary(
     val distance_km: Double? = null,
     val total_price: Double? = null,
     val driver_earning: Double? = null,
+    val cod_amount: Double? = null,
     val status: String? = null,
     val created_at: String? = null,
     val accepted_at: String? = null,

@@ -22,6 +22,7 @@ data class UserProfile(
     val id_card_back_url: String?,
     val portrait_url: String?,
     val is_verified: String,
+    val is_locked: Boolean = false,
     val identity_reject_reason: String?,
     val created_at: String,
     val updated_at: String

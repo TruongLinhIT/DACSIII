@@ -15,6 +15,7 @@ data class Order(
     val delivery_lng: Double,
     val distance_km: Double?,
     val total_price: Double,
+    val driver_earning: Double? = null,
     val photo_before_booking: String,
     val photo_at_pickup: String?,
     val photo_at_delivery: String?,

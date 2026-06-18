@@ -16,6 +16,8 @@ import com.example.dacsiii_v2.data.model.ChangePasswordRequest
 import com.example.dacsiii_v2.data.model.OrderDetailResponse
 import com.example.dacsiii_v2.data.local.AddressBookStore
 import com.example.dacsiii_v2.data.model.FavoriteAddress
+import com.example.dacsiii_v2.data.repository.ReportRepository
+import com.example.dacsiii_v2.data.model.ReportRequest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,6 +31,7 @@ import kotlin.math.sqrt
 class CustomerViewModel : ViewModel() {
     private val userRepository = UserRepository(RetrofitClient.api)
     private val orderRepository = OrderRepository(RetrofitClient.api)
+    private val reportRepository = ReportRepository(RetrofitClient.api)
 
     private val _uiState = MutableStateFlow(CustomerUiState())
     val uiState: StateFlow<CustomerUiState> = _uiState.asStateFlow()
@@ -356,6 +359,41 @@ class CustomerViewModel : ViewModel() {
             )
         }
     }
+
+    fun submitReport(
+        token: String,
+        orderId: Int?,
+        driverId: Int,
+        reasonType: String,
+        description: String,
+        onSuccess: () -> Unit
+    ) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isReportSubmitting = true)
+            val request = ReportRequest(
+                order_id = orderId,
+                driver_id = driverId,
+                reason_type = reasonType,
+                description = description
+            )
+            val result = reportRepository.submitReport(token, request)
+            _uiState.value = result.fold(
+                onSuccess = { response ->
+                    onSuccess()
+                    _uiState.value.copy(
+                        isReportSubmitting = false,
+                        message = response.message ?: "Gửi báo cáo thành công."
+                    )
+                },
+                onFailure = { error ->
+                    _uiState.value.copy(
+                        isReportSubmitting = false,
+                        message = error.message
+                    )
+                }
+            )
+        }
+    }
 }
 
 data class CustomerUiState(
@@ -379,5 +417,6 @@ data class CustomerUiState(
     val isPasswordOtpSending: Boolean = false,
     val isPasswordChanging: Boolean = false,
     val passwordChanged: Boolean = false,
-    val isIdentityUploading: Boolean = false
+    val isIdentityUploading: Boolean = false,
+    val isReportSubmitting: Boolean = false
 )

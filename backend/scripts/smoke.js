@@ -5,10 +5,7 @@ const required = [
   "DB_USER",
   "DB_NAME",
   "JWT_SECRET",
-  "OTP_SECRET",
-  "TWILIO_ACCOUNT_SID",
-  "TWILIO_AUTH_TOKEN",
-  "TWILIO_FROM_NUMBER"
+  "OTP_SECRET"
 ];
 
 const missing = required.filter((key) => !process.env[key]);
